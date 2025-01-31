@@ -3,7 +3,9 @@ from rest_framework.response import Response # Uses Response to send JSON respon
 from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission # - to make certain routes public
 from rest_framework_simplejwt.tokens import RefreshToken # to genetrate JWT tokens
 from django.contrib.auth import get_user_model, authenticate # verify credentials
+from .permissions import IsAdmin, IsManager, IsUser # Imported functions from permissions
 from django.shortcuts import render
+from rest_framework import status
 
 # Create your views here.
 User = get_user_model()
@@ -54,3 +56,33 @@ class AdminProtectedView(APIView):
 
     def get(self, request):
         return Response({"message": "You are an admin!"})
+
+class AdminView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        return Response({"dashboard": "Admin panel data here"})
+
+class ManagerView(APIView):
+    permission_classes = [IsAuthenticated, IsManager]
+
+    def get(self, request):
+        return Response({"message": "You are a manager!"})
+
+class UserView(APIView):
+    permission_classes = [IsAuthenticated, IsUser]
+
+    def get(self, request):
+        return Response({"message": "You are a user!"})
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            refresh_token = request.data["refresh"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()  # This blacklists the token
+            return Response({"message": "Successfully logged out"}, status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
