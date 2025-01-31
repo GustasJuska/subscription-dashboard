@@ -1,6 +1,6 @@
 from rest_framework.views import APIView # Uses APIView to create API endpoints
 from rest_framework.response import Response # Uses Response to send JSON responses
-from rest_framework.permissions import AllowAny # - to make certain routes public
+from rest_framework.permissions import AllowAny, IsAuthenticated # - to make certain routes public
 from rest_framework_simplejwt.tokens import RefreshToken # to genetrate JWT tokens
 from django.contrib.auth import get_user_model, authenticate # verify credentials
 from django.shortcuts import render
@@ -37,3 +37,9 @@ class LoginView(APIView): # Creates the api for login
                 "access": str(refresh.access_token)
             })
         return Response({"error": "Invalid Credentials"}, status=400)
+
+class ProtectedView(APIView):
+    permission_classes = [IsAuthenticated]  # Requires login, can only access this with the JWT token
+
+    def get(self, request):
+        return Response({"message": "You are authenticated!"})
