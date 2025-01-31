@@ -46,6 +46,9 @@ INSTALLED_APPS = [
     "dashboard",
 ]
 
+AUTH_USER_MODEL = "authentication.CustomUser"
+
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -131,10 +134,10 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
+    "DEFAULT_AUTHENTICATION_CLASSES": ( # Tells django to use JWT authentication instead of the traditional session-based login
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": [
+    "DEFAULT_PERMISSION_CLASSES": [ # This requires users to log in before they can access API endpoints
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
