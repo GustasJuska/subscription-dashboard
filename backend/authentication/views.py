@@ -1,6 +1,6 @@
 from rest_framework.views import APIView # Uses APIView to create API endpoints
 from rest_framework.response import Response # Uses Response to send JSON responses
-from rest_framework.permissions import AllowAny, IsAuthenticated # - to make certain routes public
+from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission # - to make certain routes public
 from rest_framework_simplejwt.tokens import RefreshToken # to genetrate JWT tokens
 from django.contrib.auth import get_user_model, authenticate # verify credentials
 from django.shortcuts import render
@@ -28,7 +28,7 @@ class LoginView(APIView): # Creates the api for login
     def post(self, request): # reads the request
         email = request.data.get("email") # extracts email entered by user
         password = request.data.get("password")
-        user = authenticate(username=email, password=password) # checks if the email and password match a real user in the database
+        user = authenticate(email=email, password=password) # checks if the email and password match a real user in the database
 
         if user is not None: # checks if user exists and if they do then django generates a JWT refresh and access token so that the user can access the protected API requests
             refresh = RefreshToken.for_user(user)
@@ -43,3 +43,14 @@ class ProtectedView(APIView):
 
     def get(self, request):
         return Response({"message": "You are authenticated!"})
+
+class IsAdmin(BasePermission):
+    """ Custom permission to allow only admins """
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'admin'
+
+class AdminProtectedView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        return Response({"message": "You are an admin!"})

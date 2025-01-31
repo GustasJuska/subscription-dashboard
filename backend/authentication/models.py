@@ -17,6 +17,12 @@ class CustomUser(AbstractUser):
         related_name="customuser_permissions",
         blank=True
     )
-    
+
+    ROLE_CHOICES = (
+        ('admin', 'Admin'),
+        ('user', 'User'),
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
