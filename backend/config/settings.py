@@ -12,16 +12,32 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
+import os
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=BASE_DIR / ".env")
+
+# Get secrets from environment variables
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'default-secret-key')  # Fallback for dev
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+
+# Ensure critical keys are set
+if not SECRET_KEY or SECRET_KEY == 'default-secret-key':
+    raise ValueError("❌ ERROR: SECRET_KEY is not set in .env file!")
+
+if not STRIPE_SECRET_KEY:
+    raise ValueError("❌ ERROR: STRIPE_SECRET_KEY is not set in .env file!")
+
+if not STRIPE_PUBLIC_KEY:
+    raise ValueError("❌ ERROR: STRIPE_PUBLIC_KEY is not set in .env file!")
+
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-x_n8e2595a*con19q1&d&+e(9eb@kvdwfm=kloir+0j7vzi-#a'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -150,7 +166,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": True,  # ✅ This ensures tokens get blacklisted on logout
+    "BLACKLIST_AFTER_ROTATION": True,  # This ensures tokens get blacklisted on logout
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
