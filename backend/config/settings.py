@@ -68,15 +68,20 @@ AUTH_USER_MODEL = "authentication.CustomUser"
 
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",# This will allow the frontend to send requests to the backend since django would by default block these requests. + Cors support
     'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    "corsheaders.middleware.CorsMiddleware", # This will allow the frontend to send requests to the backend since django would by default block these requests. + Cors support
+    'django.contrib.sessions.middleware.SessionMiddleware', 
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for development
+CORS_ALLOW_METHODS = ["GET", "POST", "OPTIONS"]
+CORS_ALLOW_HEADERS = ["Content-Type", "Authorization"]
+CORS_ALLOW_CREDENTIALS = True # for development
 
 ROOT_URLCONF = 'config.urls'
 
