@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-async function fetchWithAuth(url, options = {}) {
+async function fetchWithAuth(url:string, options: RequestInit = {}) {
   let token = localStorage.getItem("accessToken");
 
   if (!token) {
@@ -11,10 +11,12 @@ async function fetchWithAuth(url, options = {}) {
     return;
   }
 
-  options.headers = {
-    ...options.headers,
-    Authorization: `Bearer ${token}`,
-  };
+  let headers: Record<string, string> = options.headers
+  ? { ...(options.headers as Record<string, string>) }
+  : {};
+
+  headers["Authorization"] = `Bearer ${token}`;
+  options.headers = headers; // ✅ Assign the modified headers back to options  
 
   let res = await fetch(url, options);
 
@@ -31,7 +33,8 @@ async function fetchWithAuth(url, options = {}) {
       console.log("New access token received:", data.access);
       localStorage.setItem("accessToken", data.access);
 
-      options.headers.Authorization = `Bearer ${data.access}`;
+      headers["Authorization"] = `Bearer ${data.access}`;
+      options.headers = headers;
       res = await fetch(url, options);
     } else {
       console.error("Refresh token expired. Logging out...");

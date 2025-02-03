@@ -34,7 +34,11 @@ if not STRIPE_SECRET_KEY:
 if not STRIPE_PUBLIC_KEY:
     raise ValueError("❌ ERROR: STRIPE_PUBLIC_KEY is not set in .env file!")
 
-
+STRIPE_PRICE_IDS = {
+    "basic": "price_1Qndr32cwYcZLwewtG76D015",
+    "pro": "price_1Qndfv2cwYcZLwewDpwKtoti",
+    "enterprise": "price_1QoMf82cwYcZLwewUuNEHFBL",
+}
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/

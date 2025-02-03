@@ -16,7 +16,7 @@ import {
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 // Function to fetch protected data
-async function fetchWithAuth(url, options = {}) {
+async function fetchWithAuth(url: string, options: RequestInit = {}) {
   let token = localStorage.getItem("accessToken");
 
   if (!token) {
@@ -25,10 +25,12 @@ async function fetchWithAuth(url, options = {}) {
     return;
   }
 
-  options.headers = {
-    ...options.headers,
-    Authorization: `Bearer ${token}`,
-  };
+  let headers: Record<string, string> = options.headers
+    ? { ...(options.headers as Record<string, string>) }
+    : {};
+
+  headers["Authorization"] = `Bearer ${token}`;
+  options.headers = headers;
 
   let res = await fetch(url, options);
 
@@ -45,7 +47,8 @@ async function fetchWithAuth(url, options = {}) {
       console.log("New access token received:", data.access);
       localStorage.setItem("accessToken", data.access);
 
-      options.headers.Authorization = `Bearer ${data.access}`;
+      headers["Authorization"] = `Bearer ${data.access}`;
+      options.headers = headers;
       res = await fetch(url, options);
     } else {
       console.error("Refresh token expired. Logging out...");
@@ -60,9 +63,16 @@ async function fetchWithAuth(url, options = {}) {
 
 export default function Dashboard() {
   const [userData, setUserData] = useState(null);
-  const [transactions, setTransactions] = useState([]);
-  const [subscription, setSubscription] = useState(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [subscription, setSubscription] = useState<{ plan: string, is_active?: boolean } | null>(null);
   const router = useRouter();
+
+  // Define Transaction type
+  type Transaction = {
+    type: "sale" | "expense" | "revenue";
+    amount: number;
+    date?: string;
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -78,79 +88,63 @@ export default function Dashboard() {
         .then((data) => setTransactions(data))
         .catch((err) => console.error("Error fetching transactions:", err));
 
-      fetchWithAuth("http://localhost:8000/api/auth/subscribe/")
-        .then((data) => setSubscription(data))
+      fetchWithAuth("http://localhost:8000/api/auth/subscriptions/")
+        .then((data) => setSubscription(
+          data.subscriptions && data.subscriptions.length > 0 ? data.subscriptions[0] : null
+        ))
         .catch((err) => console.error("Error fetching subscription:", err));
     }
   }, []);
 
-  // Dummy chart data
-  const chartData = {
-    labels: ["Sales", "Expenses", "Revenue"],
-    datasets: [
-      {
-        label: "Financial Overview",
-        data: [
-          transactions.reduce((acc, t) => (t.type === "sale" ? acc + t.amount : acc), 0),
-          transactions.reduce((acc, t) => (t.type === "expense" ? acc + t.amount : acc), 0),
-          transactions.reduce((acc, t) => (t.type === "revenue" ? acc + t.amount : acc), 0),
-        ],
-        backgroundColor: ["#36A2EB", "#FF6384", "#4BC0C0"],
-      },
-    ],
+  const handleUpgrade = async (plan: string) => {
+    try {
+      const res = await fetchWithAuth("http://localhost:8000/api/auth/upgrade/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+
+      if (!res.ok) throw new Error(`Error: ${res.status} - ${res.statusText}`);
+
+      const data = await res.json();
+      alert(`Subscription upgraded to ${plan} successfully!`);
+      setSubscription(subscription ? { ...subscription, plan } : { plan });
+    } catch (error) {
+      console.error("Upgrade Error:", error);
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      const res = await fetchWithAuth("http://localhost:8000/api/auth/cancel/", {
+        method: "POST",
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert("Subscription canceled.");
+        setSubscription(null);
+      } else {
+        alert(data.error);
+      }
+    } catch (error) {
+      console.error("Cancel Error:", error);
+    }
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      {userData ? <p>Welcome, {userData.username}</p> : <p>Loading...</p>}
-
-      <div className="mt-6 p-4 bg-white shadow-md rounded-lg">
-        <h2 className="text-xl font-bold mb-2">Financial Overview</h2>
-        <Bar data={chartData} />
-      </div>
-
-      <div className="mt-6 p-4 bg-white shadow-md rounded-lg">
-        <h2 className="text-xl font-bold mb-2">Transaction History</h2>
-        <table className="w-full border-collapse border border-gray-200">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border p-2">Date</th>
-              <th className="border p-2">Type</th>
-              <th className="border p-2">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.length > 0 ? (
-              transactions.map((transaction, index) => (
-                <tr key={index} className="border">
-                  <td className="p-2">{transaction.date}</td>
-                  <td className="p-2">{transaction.type}</td>
-                  <td className="p-2">${transaction.amount}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="3" className="p-2 text-center">No transactions found</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-6 p-4 bg-white shadow-md rounded-lg">
-        <h2 className="text-xl font-bold mb-2">Subscription Status</h2>
-        {subscription ? (
-          <p>Plan: {subscription.plan} - Status: {subscription.isActive ? "Active" : "Inactive"}</p>
-        ) : (
-          <p>Loading subscription info...</p>
-        )}
-      </div>
-
-      <div className="mt-6 p-4 bg-white shadow-md rounded-lg">
-        <h2 className="text-xl font-bold mb-2">AI Insights</h2>
-        <p>🚀 AI-powered financial insights will be added here soon!</p>
-      </div>
+    <div className="p-8 bg-gray-100 min-h-screen">
+      <h1 className="text-3xl font-extrabold text-gray-900">Dashboard</h1>
+      {subscription ? (
+        <div>
+          <p><strong>Plan:</strong> {subscription.plan}</p>
+          <p><strong>Status:</strong> {subscription.is_active ? "Active ✅" : "Inactive ❌"}</p>
+          <button onClick={() => handleUpgrade("pro")} className="btn btn-primary">Upgrade</button>
+          <button onClick={handleCancel} className="btn btn-danger ml-4">Cancel</button>
+        </div>
+      ) : (
+        <p>No active subscription.</p>
+      )}
     </div>
   );
 }
