@@ -14,6 +14,4 @@ urlpatterns = [ # url / function we wrote earlier and then the name we use inter
     path("manager-only/", ManagerView.as_view(), name="manager-only"),
     path("user-only/", UserView.as_view(), name="user-only"),
     path("logout/", LogoutView.as_view(), name="logout"),
-    # Remove or comment out the subscribe URL to avoid duplication
-    # path("subscribe/", CreateSubscriptionView.as_view(), name="subscribe"),
 ]

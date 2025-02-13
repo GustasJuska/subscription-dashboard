@@ -96,19 +96,18 @@ export default function Dashboard() {
     }
   }, []);
 
-  const handleUpgrade = async (plan: string) => {
+  const handleUpgrade = async (newPriceId: string) => {
     try {
       const res = await fetchWithAuth("http://localhost:8000/api/auth/upgrade/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ price_id: newPriceId }),
       });
 
-      if (!res.ok) throw new Error(`Error: ${res.status} - ${res.statusText}`);
-
-      const data = await res.json();
-      alert(`Subscription upgraded to ${plan} successfully!`);
-      setSubscription(subscription ? { ...subscription, plan } : { plan });
+      // Assuming the backend now returns the new plan name in "plan"
+      const data = res;
+      alert(`Subscription upgraded to ${data.plan} successfully!`);
+      setSubscription({ ...subscription, plan: data.plan });
     } catch (error) {
       console.error("Upgrade Error:", error);
     }
@@ -120,8 +119,8 @@ export default function Dashboard() {
         method: "POST",
       });
 
-      const data = await res.json();
-      if (res.ok) {
+      const data = res;
+      if (data.message) {
         alert("Subscription canceled.");
         setSubscription(null);
       } else {
@@ -137,10 +136,16 @@ export default function Dashboard() {
       <h1 className="text-3xl font-extrabold text-gray-900">Dashboard</h1>
       {subscription ? (
         <div>
-          <p><strong>Plan:</strong> {subscription.plan}</p>
+          {/* Display the subscription plan directly */}
+          <p><strong>Plan:</strong> {subscription.plan || "Unknown Plan"}</p>
           <p><strong>Status:</strong> {subscription.is_active ? "Active ✅" : "Inactive ❌"}</p>
-          <button onClick={() => handleUpgrade("pro")} className="btn btn-primary">Upgrade</button>
-          <button onClick={handleCancel} className="btn btn-danger ml-4">Cancel</button>
+          {/* Pass a valid Stripe price id to the upgrade handler */}
+          <button onClick={() => handleUpgrade("price_1Qndfv2cwYcZLwewDpwXyzAbc")} className="btn btn-primary">
+            Upgrade
+          </button>
+          <button onClick={handleCancel} className="btn btn-danger ml-4">
+            Cancel
+          </button>
         </div>
       ) : (
         <p>No active subscription.</p>

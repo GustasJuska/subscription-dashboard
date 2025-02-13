@@ -21,11 +21,25 @@ class RegisterView(APIView): #Creates the APi for registering
         username = request.data.get("username")
         password = request.data.get("password")
 
+        if not username or not email or not password:
+            return Response({"error": "All fields are required."}, status=status.HTTP_400_BAD_REQUEST)
+
         if User.objects.filter(email=email).exists(): #checks email exists
             return Response({"error": "Email already exists"}, status=400)
 
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already taken."}, status=status.HTTP_400_BAD_REQUEST)
+
         user = User.objects.create_user(email=email, username=username, password=password) # creates a new user if the email is unique
-        return Response({"message": "User registered successfully"})
+
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+
+        return Response({
+            "message": "User registered successfully.",
+            "refresh": str(refresh),  # ✅ Return refresh token
+            "access": access_token  # ✅ Return access token
+        }, status=status.HTTP_201_CREATED)
 
 class LoginView(APIView): # Creates the api for login
     permission_classes = [AllowAny] # Means anyone can access it even when not logged in
@@ -89,66 +103,3 @@ class LogoutView(APIView):
             return Response({"message": "Successfully logged out"}, status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
             return Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
-
-class CreateSubscriptionView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def attach_payment_method_to_customer(self, customer_id, payment_method_id):
-        """
-        Attaches a payment method to a Stripe customer and sets it as the default.
-        """
-        try:
-            # Attach the payment method to the customer
-            attached_payment_method = stripe.PaymentMethod.attach(
-                payment_method_id,
-                customer=customer_id,
-            )
-            
-            # Update the customer to set the attached payment method as the default
-            stripe.Customer.modify(
-                customer_id,
-                invoice_settings={"default_payment_method": payment_method_id},
-            )
-            return attached_payment_method
-        except stripe.error.StripeError as e:
-            # Handle the error accordingly (e.g., log the error, return error response)
-            raise e
-
-    def create_subscription(self, customer_id, payment_method_id, plan_id):
-        # First, ensure that the payment method is attached to the customer
-        self.attach_payment_method_to_customer(customer_id, payment_method_id)
-        
-        # Now, create the subscription post attaching the payment method
-        subscription = stripe.Subscription.create(
-            customer=customer_id,
-            items=[{"plan": plan_id}],
-            expand=["latest_invoice.payment_intent"],
-        )
-        return subscription
-
-    def post(self, request):
-        user = request.user
-        plan = request.data.get("plan", "basic")
-        payment_method_id = request.data.get("payment_method_id")
-
-        # Check if user already has a subscription
-        if Subscription.objects.filter(user=user, is_active=True).exists():
-            return Response({"error": "User already has an active subscription."}, status=400)
-
-        # Create a Stripe Customer
-        customer = stripe.Customer.create(email=user.email)
-
-        # Create the subscription
-        try:
-            subscription = self.create_subscription(customer.id, payment_method_id, plan)
-            # Save Subscription in DB
-            Subscription.objects.create(
-                user=user,
-                stripe_customer_id=customer.id,
-                stripe_subscription_id=subscription.id,
-                plan=plan,
-                is_active=True
-            )
-            return Response({"message": "Subscription created successfully", "subscription_id": subscription.id})
-        except stripe.error.StripeError as e:
-            return Response({"error": str(e)}, status=400)

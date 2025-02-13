@@ -15,65 +15,20 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 class CreateSubscriptionView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def attach_payment_method_to_customer(self, customer_id, payment_method_id):
-        """
-        Attaches a payment method to a Stripe customer only if it's not already attached.
-        """
-        try:
-            # Retrieve the payment method
-            payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
-
-            # Check if it's already attached to a customer
-            if payment_method.customer:
-                print(f"✅ Payment method {payment_method_id} is already attached to a customer.")
-            else:
-                stripe.PaymentMethod.attach(payment_method_id, customer=customer_id)
-                print(f"✅ Successfully attached payment method {payment_method_id} to customer {customer_id}")
-
-            # Always set it as the default payment method
-            stripe.Customer.modify(
-                customer_id,
-                invoice_settings={"default_payment_method": payment_method_id},
-            )
-
-            return payment_method
-
-        except stripe.error.StripeError as e:
-            raise e  # Handle errors if needed
-
-
-    def create_subscription(self, customer_id, payment_method_id, price_id):
-        """
-        Creates a new Stripe subscription using a valid Price ID.
-        """
-        # Attach payment method before creating the subscription
-        self.attach_payment_method_to_customer(customer_id, payment_method_id)
-        
-        # Create the subscription with correct Price ID
-        subscription = stripe.Subscription.create(
-            customer=customer_id,
-            items=[{"price": price_id}],  # ✅ Use "price" instead of "plan"
-            expand=["latest_invoice.payment_intent"],
-        )
-        return subscription
-
     def post(self, request):
         user = request.user
-        price_id = request.data.get("price_id")  # ✅ Updated to use "price_id"
+        plan = request.data.get("plan")
 
-        if not price_id:
-            return Response({"error": "Price ID is required."}, status=400)
+        price_id_mapping = settings.STRIPE_PRICE_IDS
+        price_id = price_id_mapping.get(plan)  # ✅ Get correct Stripe price ID
 
-        payment_method_id = request.data.get("payment_method_id")
-
-        if not payment_method_id:
-            return Response({"error": "Payment Method ID is required."}, status=400)
+        if not plan:
+            return Response({"error": "Plan is required."}, status=400)
 
         # Check if user already has an active subscription
         if Subscription.objects.filter(user=user, is_active=True).exists():
             return Response({"error": "User already has an active subscription."}, status=400)
 
-        # Check if the user already has a Stripe customer
         existing_customers = stripe.Customer.list(email=user.email).data
 
         if existing_customers:
@@ -83,22 +38,52 @@ class CreateSubscriptionView(APIView):
             customer = stripe.Customer.create(email=user.email)
             print(f"✅ Created new Stripe customer: {customer.id}")
 
-        # Create the subscription
-        try:
-            subscription = self.create_subscription(customer.id, payment_method_id, price_id)
-            
-            # Save Subscription in Database
-            Subscription.objects.create(
-                user=user,
-                stripe_customer_id=customer.id,
-                stripe_subscription_id=subscription.id,
-                plan=price_id,  # ✅ Save "price_id" instead of "plan"
-                is_active=True
-            )
-            return Response({"message": "Subscription created successfully", "subscription_id": subscription.id})
-        except stripe.error.StripeError as e:
-            return Response({"error": str(e)}, status=400)
+        if not customer or not hasattr(customer, "id"):
+            return Response({"error": "Stripe customer creation failed."}, status=400)
 
+        # ✅ Handle Free Plan (Basic)
+        if plan == "basic":
+            try:
+                Subscription.objects.create(
+                    user=user,
+                    stripe_customer_id=customer.id,
+                    stripe_subscription_id=None,  # ✅ No Stripe Subscription needed for free plan
+                    plan="Basic",
+                    is_active=True
+                )
+                return Response({
+                    "message": "Basic plan activated successfully.",
+                    "subscription_id": None,  # ✅ No Stripe Subscription for free plan
+                    "plan": "Basic",
+                    "checkout_url": None  # ✅ No checkout required
+                })
+            except Exception as e:
+                return Response({"error": str(e)}, status=400)
+
+        # ✅ Handle Paid Plans (Pro, Enterprise)
+        if plan in ["pro", "enterprise"]:
+            if not price_id:
+                return Response({"error": "Invalid plan selected."}, status=400)
+
+            # Create Stripe Checkout Session
+            try:
+                checkout_session = stripe.checkout.Session.create(
+                    payment_method_types=["card"],
+                    customer_email=user.email,  # Stripe will link it to this user
+                    line_items=[{"price": price_id, "quantity": 1}],
+                    mode="subscription",
+                    success_url="http://localhost:3000/dashboard?session_id={CHECKOUT_SESSION_ID}",  # ✅ Redirect on success
+                    cancel_url="http://localhost:3000/pricing",  # ✅ Redirect if canceled
+                )
+
+                return Response({
+                    "checkout_url": checkout_session.url  # ✅ Send URL to frontend
+                })
+
+            except stripe.error.StripeError as e:
+                return Response({"error": str(e)}, status=400)
+
+        return Response({"error": "Invalid plan type."}, status=400)
 
     @csrf_exempt
     def stripe_webhook(request):
@@ -142,7 +127,6 @@ class CreateSubscriptionView(APIView):
 
         return JsonResponse({"status": "success"}, status=200)
 
-
 class GetSubscriptionView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -163,30 +147,28 @@ class UpgradeSubscriptionView(APIView):
 
     def post(self, request):
         user = request.user
-        plan = request.data.get("plan")  # e.g., "pro" or "enterprise"
+        new_price_id = request.data.get("price_id")  # e.g., "pro" or "enterprise"
 
-        if plan not in settings.STRIPE_PRICE_IDS:
+        if not new_price_id:
             return Response({"error": "Invalid plan choice."}, status=400)
 
         try:
             subscription = Subscription.objects.get(user=user, is_active=True)
-            new_price_id = settings.STRIPE_PRICE_IDS[plan]
+            price = stripe.Price.retrieve(new_price_id)
+            product = stripe.Product.retrieve(price["product"])
+            new_plan_name = product["name"]  # ✅ Get new plan name dynamically
 
-            stripe_subscription = stripe.Subscription.retrieve(subscription.stripe_subscription_id)
-
-            current_item_id = stripe_subscription["items"]["data"][0]["id"]
-
-            # Update the Stripe subscription with the new plan
+            # ✅ Update subscription in Stripe
             stripe.Subscription.modify(
                 subscription.stripe_subscription_id,
-                items=[{"id": current_item_id, "price": new_price_id}],  # Price ID needs to match Stripe's pricing ID
+                items=[{"price": new_price_id}]
             )
 
-            # Update subscription in the database
-            subscription.plan = plan
+            # ✅ Update subscription in the database
+            subscription.plan = new_plan_name
             subscription.save()
 
-            return Response({"message": f"Subscription upgraded to {plan} successfully."})
+            return Response({"message": f"Subscription upgraded to {new_plan_name} successfully."})
         except Subscription.DoesNotExist:
             return Response({"error": "No active subscription found."}, status=404)
         except stripe.error.StripeError as e:
@@ -224,15 +206,24 @@ class ListUserSubscriptionsView(APIView):
         user = request.user
         subscriptions = Subscription.objects.filter(user=user)
         
-        data = [
-            {
+        data = []
+
+        for sub in subscriptions:
+            try:
+                stripe_sub = stripe.Subscription.retrieve(sub.stripe_subscription_id)
+                product_id = stripe_sub["items"]["data"][0]["price"]["product"]
+                product = stripe.Product.retrieve(product_id)
+                plan_name = product["name"]  # ✅ Get Plan Name Dynamically
+            except stripe.error.StripeError as e:
+                plan_name = "Unknown (Error fetching from Stripe)"
+
+            # ✅ Append to response data
+            data.append({
                 "subscription_id": sub.stripe_subscription_id,
-                "plan": sub.plan,
+                "plan": plan_name,  # Use retrieved plan name
                 "is_active": sub.is_active,
                 "created_at": sub.created_at,
                 "updated_at": sub.updated_at,
-            }
-            for sub in subscriptions
-        ]
+            })
         
         return Response({"subscriptions": data})
